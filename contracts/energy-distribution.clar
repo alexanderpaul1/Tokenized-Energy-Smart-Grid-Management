@@ -1,30 +1,85 @@
+;; Energy Distribution Contract
+;; Manages smart grid energy distribution
 
-;; title: energy-distribution
-;; version:
-;; summary:
-;; description:
+(define-constant ERR_NOT_AUTHORIZED (err u200))
+(define-constant ERR_INSUFFICIENT_ENERGY (err u201))
+(define-constant ERR_INVALID_DISTRIBUTION (err u202))
 
-;; traits
-;;
+;; Data structures
+(define-map energy-pools
+  { pool-id: uint }
+  {
+    total-energy: uint,
+    available-energy: uint,
+    price-per-unit: uint,
+    created-at: uint
+  }
+)
 
-;; token definitions
-;;
+(define-map distribution-records
+  { record-id: uint }
+  {
+    from-pool: uint,
+    to-address: principal,
+    amount: uint,
+    timestamp: uint
+  }
+)
 
-;; constants
-;;
+(define-data-var next-pool-id uint u1)
+(define-data-var next-record-id uint u1)
 
-;; data vars
-;;
+;; Public functions
+(define-public (create-energy-pool (total-energy uint) (price-per-unit uint))
+  (let ((pool-id (var-get next-pool-id)))
+    (map-set energy-pools
+      { pool-id: pool-id }
+      {
+        total-energy: total-energy,
+        available-energy: total-energy,
+        price-per-unit: price-per-unit,
+        created-at: block-height
+      }
+    )
+    (var-set next-pool-id (+ pool-id u1))
+    (ok pool-id)
+  )
+)
 
-;; data maps
-;;
+(define-public (distribute-energy (pool-id uint) (amount uint) (recipient principal))
+  (let (
+    (pool (unwrap! (map-get? energy-pools { pool-id: pool-id }) ERR_INVALID_DISTRIBUTION))
+    (record-id (var-get next-record-id))
+  )
+    (asserts! (>= (get available-energy pool) amount) ERR_INSUFFICIENT_ENERGY)
 
-;; public functions
-;;
+    ;; Update pool
+    (map-set energy-pools
+      { pool-id: pool-id }
+      (merge pool { available-energy: (- (get available-energy pool) amount) })
+    )
 
-;; read only functions
-;;
+    ;; Record distribution
+    (map-set distribution-records
+      { record-id: record-id }
+      {
+        from-pool: pool-id,
+        to-address: recipient,
+        amount: amount,
+        timestamp: block-height
+      }
+    )
 
-;; private functions
-;;
+    (var-set next-record-id (+ record-id u1))
+    (ok record-id)
+  )
+)
 
+;; Read-only functions
+(define-read-only (get-energy-pool (pool-id uint))
+  (map-get? energy-pools { pool-id: pool-id })
+)
+
+(define-read-only (get-distribution-record (record-id uint))
+  (map-get? distribution-records { record-id: record-id })
+)
